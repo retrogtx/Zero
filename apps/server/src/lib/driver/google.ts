@@ -1264,4 +1264,90 @@ export class GoogleMailManager implements MailManager {
 
     return results;
   }
+
+  public async getEarliestMessageDate(): Promise<string> {
+    // Gmail launched publicly in 2004, so we can safely begin our search there
+    const formatDate = (d: Date) =>
+      d.toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD
+
+    // Helper to check if there is at least one message before the given date
+    const hasMessageBefore = async (date: Date) => {
+      const res = await this.gmail.users.threads.list({
+        userId: 'me',
+        q: `before:${formatDate(date)}`,
+        maxResults: 1,
+        quotaUser: this.config.auth?.email,
+      });
+      return (res.data.threads?.length ?? 0) > 0;
+    };
+
+    let low = new Date('2004-01-01');
+    let high = new Date();
+    let answer = high;
+    // Binary search – at most ~32 iterations to cover 20+ years of history
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (let i = 0; i < 32 && low <= high; i++) {
+      const midTime = Math.floor((low.getTime() + high.getTime()) / 2);
+      const mid = new Date(midTime);
+      // If there is at least 1 thread before mid -> move left (earlier)
+      if (await hasMessageBefore(mid)) {
+        answer = mid;
+        high = new Date(midTime - dayMs);
+      } else {
+        // No messages before mid  => move right (later)
+        low = new Date(midTime + dayMs);
+      }
+    }
+
+    return formatDate(answer);
+  }
+
+  public async getThreadsInDateRange(params: {
+    folder: string;
+    startDate: string; // YYYY/MM/DD format
+    endDate: string;   // YYYY/MM/DD format
+    maxResults?: number;
+    pageToken?: string;
+    query?: string;
+    labelIds?: string[];
+  }) {
+    const { folder, startDate, endDate, maxResults = 100, pageToken, query: baseQuery, labelIds: _labelIds = [] } = params;
+    
+    return this.withErrorHandler(
+      'getThreadsInDateRange',
+      async () => {
+        // Build the date-specific query
+        const dateQuery = `after:${startDate} before:${endDate}`;
+        const combinedQuery = baseQuery ? `${baseQuery} ${dateQuery}` : dateQuery;
+        
+        const { folder: normalizedFolder, q: normalizedQ } = this.normalizeSearch(folder, combinedQuery);
+        const labelIds = [..._labelIds];
+        if (normalizedFolder) labelIds.push(normalizedFolder.toUpperCase());
+
+        const res = await this.gmail.users.threads.list({
+          userId: 'me',
+          q: normalizedQ ? normalizedQ : undefined,
+          labelIds: folder === 'inbox' ? labelIds : [],
+          maxResults,
+          pageToken: pageToken ? pageToken : undefined,
+          quotaUser: this.config.auth?.email,
+        });
+
+        const threads = res.data.threads ?? [];
+
+        return {
+          threads: threads
+            .filter((thread) => typeof thread.id === 'string')
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            .map((thread) => ({
+              id: thread.id!,
+              historyId: thread.historyId ?? null,
+              $raw: thread,
+            })),
+          nextPageToken: res.data.nextPageToken ?? null,
+        };
+      },
+      { folder, startDate, endDate, maxResults, pageToken, baseQuery, _labelIds, email: this.config.auth?.email },
+    );
+  }
 }

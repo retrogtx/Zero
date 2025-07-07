@@ -25,7 +25,7 @@ export interface ParsedDraft<T = unknown> {
   subject?: string;
   content?: string;
   rawMessage?: {
-    internalDate?: string;
+    internalDate?: string | null;
   };
   cc?: string[];
   bcc?: string[];
@@ -104,4 +104,17 @@ export interface MailManager {
   getEmailAliases(): Promise<{ email: string; name?: string; primary?: boolean }[]>;
   revokeToken(token: string): Promise<boolean>;
   deleteAllSpam(): Promise<DeleteAllSpamResponse>;
+  getEarliestMessageDate?(): Promise<string>;
+  getThreadsInDateRange?(params: {
+    folder: string;
+    startDate: string;
+    endDate: string;
+    maxResults?: number;
+    pageToken?: string;
+    query?: string;
+    labelIds?: string[];
+  }): Promise<{
+    threads: { id: string; historyId: string | null; $raw?: unknown }[];
+    nextPageToken: string | null;
+  }>;
 }

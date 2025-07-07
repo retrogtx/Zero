@@ -297,6 +297,22 @@ export class AgentRpcDO extends RpcTarget {
   async syncThreads(folder: string) {
     return await this.mainDo.syncThreads(folder);
   }
+
+  async getEarliestMessageDate() {
+    return await this.mainDo.getEarliestMessageDate();
+  }
+
+  async getThreadsInDateRange(params: {
+    folder: string;
+    startDate: string;
+    endDate: string;
+    maxResults?: number;
+    pageToken?: string;
+    query?: string;
+    labelIds?: string[];
+  }) {
+    return await this.mainDo.getThreadsInDateRange(params);
+  }
 }
 
 const shouldDropTables = env.DROP_AGENT_TABLES === 'true';
@@ -1159,6 +1175,45 @@ export class ZeroAgent extends AIChatAgent<typeof env> {
   //       throw error;
   //     }
   //   }
+
+  async getEarliestMessageDate() {
+    if (!this.driver) {
+      throw new Error('No driver available');
+    }
+    if (typeof (this.driver as any).getEarliestMessageDate === 'function') {
+      // eslint-disable-next-line @typescript-eslint/return-await
+      return (this.driver as any).getEarliestMessageDate();
+    }
+    throw new Error('getEarliestMessageDate not implemented for driver');
+  }
+
+  async getThreadsInDateRange(params: {
+    folder: string;
+    startDate: string;
+    endDate: string;
+    maxResults?: number;
+    pageToken?: string;
+    query?: string;
+    labelIds?: string[];
+  }) {
+    if (!this.driver) {
+      throw new Error('No driver available');
+    }
+    if (typeof (this.driver as any).getThreadsInDateRange === 'function') {
+      // eslint-disable-next-line @typescript-eslint/return-await
+      return (this.driver as any).getThreadsInDateRange(params);
+    }
+    // Fallback to regular list method
+    const dateQuery = `after:${params.startDate} before:${params.endDate}`;
+    const combinedQuery = params.query ? `${params.query} ${dateQuery}` : dateQuery;
+    return this.listThreads({
+      folder: params.folder,
+      query: combinedQuery,
+      maxResults: params.maxResults,
+      pageToken: params.pageToken,
+      labelIds: params.labelIds,
+    });
+  }
 }
 
 export class ZeroMCP extends McpAgent<typeof env, {}, { userId: string }> {

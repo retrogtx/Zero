@@ -9,7 +9,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import { useSettings } from './use-settings';
 import { usePrevious } from './use-previous';
 import type { ParsedMessage } from '@/types';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { useTheme } from 'next-themes';
 import { useQueryState } from 'nuqs';
@@ -21,11 +21,57 @@ export const useThreads = () => {
   const isInQueue = useAtomValue(isThreadInBackgroundQueueAtom);
   const trpc = useTRPC();
   const { labels, setLabels } = useSearchLabels();
+  const [sortOrder] = useQueryState('sort', { defaultValue: 'new' });
+
+  // Track current date window for oldest-first pagination
+  const [currentDateWindow, setCurrentDateWindow] = useState<{
+    start: string;
+    end: string;
+    yearOffset: number;
+  } | null>(null);
+
+  // Fetch the earliest available message date only when we need it (oldest-first sort)
+  const {
+    data: earliestDate,
+  } = useQuery(
+    trpc.mail.earliestDate.queryOptions(undefined, {
+      enabled: sortOrder === 'old',
+      staleTime: Infinity,
+    }),
+  );
+
+  // Initialize date window when we have earliestDate and sort is 'old'
+  useEffect(() => {
+    if (sortOrder === 'old' && earliestDate && !currentDateWindow) {
+      const [y, m, d] = earliestDate.split('/').map((v) => Number(v));
+      const end = `${y + 1}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
+      setCurrentDateWindow({
+        start: earliestDate,
+        end,
+        yearOffset: 0,
+      });
+    } else if (sortOrder === 'new') {
+      setCurrentDateWindow(null);
+    }
+  }, [sortOrder, earliestDate, currentDateWindow]);
+
+  // When sorting by oldest, we modify the search query to include a very old date
+  // range, which makes Gmail naturally return older emails first
+  const searchQuery = useMemo(() => {
+    if (sortOrder === 'old') {
+      if (!currentDateWindow) return '';
+
+      const baseQuery = searchValue.value || '';
+      const oldDateQuery = `after:${currentDateWindow.start} before:${currentDateWindow.end}`;
+      return baseQuery ? `${baseQuery} ${oldDateQuery}` : oldDateQuery;
+    }
+    return searchValue.value;
+  }, [searchValue.value, sortOrder, currentDateWindow]);
 
   const threadsQuery = useInfiniteQuery(
     trpc.mail.listThreads.infiniteQueryOptions(
       {
-        q: searchValue.value,
+        q: searchQuery,
         folder,
         labelIds: labels,
       },
@@ -42,23 +88,50 @@ export const useThreads = () => {
   // Flatten threads from all pages and sort by receivedOn date (newest first)
 
   const threads = useMemo(() => {
-    return threadsQuery.data
+    const base = threadsQuery.data
       ? threadsQuery.data.pages
           .flatMap((e) => e.threads)
           .filter(Boolean)
           .filter((e) => !isInQueue(`thread:${e.id}`))
       : [];
-  }, [threadsQuery.data, threadsQuery.dataUpdatedAt, isInQueue, backgroundQueue]);
+    
+    if (sortOrder === 'old') {
+      // For oldest-first, we need to reverse the entire flattened array
+      // This gives us the chronologically oldest emails first
+      return [...base].reverse();
+    }
+    
+    return base;
+  }, [threadsQuery.data, isInQueue, sortOrder]);
 
   const isEmpty = useMemo(() => threads.length === 0, [threads]);
   const isReachingEnd =
     isEmpty ||
     (threadsQuery.data &&
       !threadsQuery.data.pages[threadsQuery.data.pages.length - 1]?.nextPageToken);
-
+  
   const loadMore = async () => {
     if (threadsQuery.isLoading || threadsQuery.isFetching) return;
-    await threadsQuery.fetchNextPage();
+    
+    // For oldest-first sorting, when we reach the end of current window, expand the date range
+    if (sortOrder === 'old' && isReachingEnd && currentDateWindow && earliestDate) {
+      const [startY, startM, startD] = earliestDate.split('/').map((v) => Number(v));
+      const nextYearOffset = currentDateWindow.yearOffset + 1;
+      
+      // Expand the end date by one more year
+      const newEnd = `${startY + nextYearOffset + 1}/${String(startM).padStart(2, '0')}/${String(startD).padStart(2, '0')}`;
+      
+      setCurrentDateWindow({
+        start: earliestDate, // Keep the original start
+        end: newEnd,
+        yearOffset: nextYearOffset,
+      });
+      
+      // Refetch with the expanded date range
+      await threadsQuery.refetch();
+    } else {
+      await threadsQuery.fetchNextPage();
+    }
   };
 
   return [threadsQuery, threads, isReachingEnd, loadMore] as const;
@@ -97,15 +170,6 @@ export const useThread = (threadId: string | null, historyId?: string | null) =>
   //       !!data?.settings?.externalImages ||
   //       !!data?.settings?.trustedSenders?.includes(threadQuery.data?.latest?.sender.email ?? ''),
   //     [data?.settings, threadQuery.data?.latest?.sender.email],
-  //   );
-
-  const latestDraft = useMemo(() => {
-    if (!threadQuery.data?.latest?.id) return undefined;
-    return threadQuery.data.messages.findLast((e) => e.isDraft);
-  }, [threadQuery]);
-
-  //   const { mutateAsync: processEmailContent } = useMutation(
-  //     trpc.mail.processEmailContent.mutationOptions(),
   //   );
 
   //   const prefetchEmailContent = async (message: ParsedMessage) => {
@@ -148,6 +212,11 @@ export const useThread = (threadId: string | null, historyId?: string | null) =>
       messages: threadQuery.data?.messages.filter((e) => !e.isDraft),
     };
   }, [threadQuery.data]);
+
+  const latestDraft = useMemo(() => {
+    if (!threadQuery.data?.latest?.id) return undefined;
+    return threadQuery.data.messages.findLast((e) => e.isDraft);
+  }, [threadQuery]);
 
   return { ...threadQuery, data: finalData, isGroupThread, latestDraft };
 };

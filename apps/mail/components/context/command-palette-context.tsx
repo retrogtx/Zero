@@ -239,7 +239,7 @@ export function CommandPalette({ children }: { children: React.ReactNode }) {
       });
       setEmailSuggestions(Array.from(emails).slice(0, 20));
     }
-  }, [threads]);
+  }, [threads.length]);
 
   useEffect(() => {
     if (!open) {

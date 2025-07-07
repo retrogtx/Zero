@@ -67,6 +67,7 @@ import { m } from '@/paraglide/messages';
 import { useQueryState } from 'nuqs';
 import { useAtom } from 'jotai';
 import { toast } from 'sonner';
+import SortToggle from './sort-toggle';
 
 interface ITag {
   id: string;
@@ -489,6 +490,7 @@ export function MailLayout() {
                   <div>
                     <SidebarToggle className="h-fit px-2" />
                     <SelectAllCheckbox className="ml-2" />
+                    <SortToggle className="ml-1" />
                   </div>
 
                   <div className="flex items-center gap-2">

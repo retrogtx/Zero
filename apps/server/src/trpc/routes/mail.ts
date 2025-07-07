@@ -430,4 +430,38 @@ export const mailRouter = router({
         });
       }
     }),
+  earliestDate: activeDriverProcedure
+    .output(z.string())
+    .query(async ({ ctx }) => {
+      const { activeConnection } = ctx;
+      const agent = await getZeroAgent(activeConnection.id);
+      return agent.getEarliestMessageDate();
+    }),
+  threadsInDateRange: activeDriverProcedure
+    .input(
+      z.object({
+        folder: z.string().optional().default('inbox'),
+        startDate: z.string(),
+        endDate: z.string(),
+        q: z.string().optional().default(''),
+        max: z.number().optional().default(defaultPageSize),
+        cursor: z.string().optional().default(''),
+        labelIds: z.array(z.string()).optional().default([]),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const { folder, startDate, endDate, max, cursor, q, labelIds } = input;
+      const { activeConnection } = ctx;
+      const agent = await getZeroAgent(activeConnection.id);
+      
+      return await agent.getThreadsInDateRange({
+        folder,
+        startDate,
+        endDate,
+        maxResults: max,
+        pageToken: cursor,
+        query: q,
+        labelIds,
+      });
+    }),
 });
