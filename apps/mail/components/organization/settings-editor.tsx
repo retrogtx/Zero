@@ -12,7 +12,18 @@ import { Loader2, Settings as SettingsIcon, Palette, Users } from 'lucide-react'
 
 const schema = z.object({
   branding: z.object({
-    logoUrl: z.string().url().optional().or(z.literal('')),
+    logoUrl: z
+      .string()
+      .optional()
+      .refine(
+        (val) => {
+          if (!val) return true; 
+          return /^data:image\/.+;base64,.+/.test(val);
+        },
+        {
+          message: 'Please upload an image file.',
+        },
+      ),
   }),
   defaults: z.object({
     signature: z.string(),
@@ -109,15 +120,29 @@ export function SettingsEditor({ orgId }: SettingsEditorProps) {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="logoUrl">Logo URL</Label>
-              <Input 
-                id="logoUrl"
-                placeholder="https://example.com/logo.png" 
-                {...register('branding.logoUrl')} 
-              />
-              {errors.branding?.logoUrl && (
-                <p className="text-destructive text-sm">{errors.branding.logoUrl.message}</p>
-              )}
+              {/* File upload */}
+              <div className="space-y-2">
+                <Label htmlFor="logoFile">Upload Logo</Label>
+                <Input
+                  className="max-w-sm"
+                  id="logoFile"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const result = reader.result as string;
+                      setValue('branding.logoUrl', result, { shouldValidate: true });
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                {errors.branding?.logoUrl && (
+                  <p className="text-destructive text-sm">{errors.branding.logoUrl.message}</p>
+                )}
+              </div>
               {/* Logo preview */}
               {watchedValues.branding?.logoUrl && (
                 <div className="mt-2">
