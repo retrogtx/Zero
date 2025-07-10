@@ -26,13 +26,26 @@ export async function clientLoader({ params, request }: Route.ClientLoaderArgs) 
       `${import.meta.env.VITE_PUBLIC_APP_URL}/login?redirect=${request.url}`,
     );
 
+  const invitation = await authClient.organization.getInvitation({
+    query: {
+      id: params.invitationToken,
+    },
+  });
+
+  if (invitation.error) {
+    return Response.redirect(
+      `${import.meta.env.VITE_PUBLIC_APP_URL}/settings/general?error=${invitation.error.message}`,
+    );
+  }
+
   return {
     invitationToken: params.invitationToken,
+    invitation,
   };
 }
 
 export default async function page() {
-  const { invitationToken } = useLoaderData<typeof clientLoader>();
+  const { invitationToken, invitation } = useLoaderData<typeof clientLoader>();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState<'accept' | 'decline' | null>(null);
@@ -49,8 +62,6 @@ export default async function page() {
     } catch (error: any) {
       toast.error(error.message || 'Something went wrong. Please try again.');
     } finally {
-      setIsLoading(false);
-      setLoadingAction(null);
     }
   };
 
@@ -66,29 +77,8 @@ export default async function page() {
     } catch (error: any) {
       toast.error(error.message || 'Something went wrong. Please try again.');
     } finally {
-      setIsLoading(false);
-      setLoadingAction(null);
     }
   };
-
-  // TODO: Add this back in when we have a way to get the invitation token from the email
-  // const invitation = await authClient.organization.getInvitation({
-  //   query: {
-  //     id: invitationToken,
-  //   },
-  // });
-
-  // const session = await authProxy.api.getSession({ headers: request.headers });
-
-  // if (invitation.data?.email !== session?.user?.email) {
-  //   toast.error('You are not logged in.');
-  //   return Response.redirect(`${import.meta.env.VITE_PUBLIC_APP_URL}/login?redirect=${request.url}`);
-  // }
-
-  // if (invitation.error) {
-  //   toast.error(invitation.error.message);
-  //   return Response.redirect(`${import.meta.env.VITE_PUBLIC_APP_URL}/mail/inbox`);
-  // }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
