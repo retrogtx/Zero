@@ -14,11 +14,54 @@ export function processEmailHtml({ html, shouldLoadImages, theme }: ProcessEmail
   let hasBlockedImages = false;
 
   const sanitizeConfig: sanitizeHtml.IOptions = {
-    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'title']),
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'style', 'title']),
+
     allowedAttributes: {
-      img: ['src', 'alt'],
-      a: ['href', 'target', 'rel'],
-      '*': ['style', 'class', 'width', 'height', 'colspan', 'rowspan'],
+      '*': [
+        'class',
+        'style',
+        'align',
+        'valign',
+        'width',
+        'height',
+        'cellpadding',
+        'cellspacing',
+        'border',
+        'bgcolor',
+        'colspan',
+        'rowspan',
+      ],
+      a: ['href', 'name', 'target', 'rel', 'class', 'style'],
+      img: ['src', 'alt', 'width', 'height', 'class', 'style'],
+    },
+
+    allowedStyles: {
+      '*': {
+        color: [
+          /^#(?:[0-9a-fA-F]{3}){1,2}$/,
+          /^rgb\(\d{1,3},\s?\d{1,3},\s?\d{1,3}\)$/,
+          /^rgba\(\d{1,3},\s?\d{1,3},\s?\d{1,3},\s?(0|1|0?\.\d+)\)$/,
+        ],
+        'background-color': [
+          /^#(?:[0-9a-fA-F]{3}){1,2}$/,
+          /^rgb\(\d{1,3},\s?\d{1,3},\s?\d{1,3}\)$/,
+          /^rgba\(\d{1,3},\s?\d{1,3},\s?\d{1,3},\s?(0|1|0?\.\d+)\)$/,
+        ],
+        'text-align': [/^left$/, /^right$/, /^center$/, /^justify$/],
+        'font-size': [/^\d+(?:px|em|rem|%)$/],
+        'font-weight': [/^(normal|bold|bolder|lighter|[1-9]00)$/],
+        'line-height': [/^\d+(?:px|em|rem|%)$/],
+        'text-decoration': [/^none$/, /^underline$/, /^line-through$/],
+        margin: [/^\d+(?:px|%)?(\s+\d+(?:px|%)?){0,3}$/],
+        padding: [/^\d+(?:px|%)?(\s+\d+(?:px|%)?){0,3}$/],
+        border: [/^\d+px\s+(solid|dashed|dotted|double)\s+#(?:[0-9a-fA-F]{3}){1,2}$/],
+        'border-radius': [/^\d+(?:px|%)$/],
+        width: [/^\d+(?:px|%)$/],
+        height: [/^\d+(?:px|%)$/],
+        'max-width': [/^\d+(?:px|%)$/],
+        'min-width': [/^\d+(?:px|%)$/],
+        display: [/^inline$/, /^block$/, /^inline-block$/, /^none$/],
+      },
     },
     allowedSchemes: shouldLoadImages
       ? ['http', 'https', 'mailto', 'tel', 'data', 'cid', 'blob']
@@ -26,6 +69,7 @@ export function processEmailHtml({ html, shouldLoadImages, theme }: ProcessEmail
     allowedSchemesByTag: {
       img: shouldLoadImages ? ['http', 'https', 'data', 'cid', 'blob'] : ['cid'],
     },
+
     transformTags: {
       img: (tagName, attribs) => {
         if (!shouldLoadImages && attribs.src && !attribs.src.startsWith('cid:')) {
